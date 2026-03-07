@@ -19,6 +19,7 @@ jobs:
       contents: read
       pages: write
       id-token: write
+    environment: github-pages
     defaults:
       run:
         working-directory: AI-Assisted Continuous Integration/AI-Assisted Pipeline Configuration
@@ -128,7 +129,6 @@ jobs:
       - name: Deploy to GitHub Pages
         if: always() && github.ref == 'refs/heads/master'
         uses: actions/deploy-pages@v4
-        environment: github-pages
 
   security-scan:
     name: Dependency Security Scan
