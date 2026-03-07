@@ -17,6 +17,9 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
+    defaults:
+      run:
+        working-directory: AI-Assisted Continuous Integration/AI-Assisted Pipeline Configuration
 
     steps:
       # Checkout the repository code
@@ -29,6 +32,7 @@ jobs:
         with:
           node-version: lts/*
           cache: yarn
+          cache-dependency-path: AI-Assisted Continuous Integration/AI-Assisted Pipeline Configuration/yarn.lock
 
       # Install dependencies with Yarn
       - name: Install dependencies
@@ -48,7 +52,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: playwright-html-report
-          path: playwright-report
+          path: AI-Assisted Continuous Integration/AI-Assisted Pipeline Configuration/playwright-report
 
       # Upload test traces (runs even if tests fail)
       - name: Upload Playwright traces
@@ -56,7 +60,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: playwright-traces
-          path: test-results
+          path: AI-Assisted Continuous Integration/AI-Assisted Pipeline Configuration/test-results
 
       # Notify Teams only when workflow fails (MOCK - for learning purposes)
       - name: Notify Teams on failure
