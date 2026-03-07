@@ -2,6 +2,7 @@
 node_modules/
 package-lock.json
 yarn.lock
+!AI-Assisted Continuous Integration/AI-Assisted Pipeline Configuration/yarn.lock
 
 # Build & Distribution
 dist/
