@@ -1,0 +1,76 @@
+name: Playwright Tests
+
+on:
+  pull_request:
+    branches: [ master ]
+
+env:
+  CI: true
+
+jobs:
+  playwright-tests:
+    name: Run Playwright Tests
+    runs-on: ubuntu-latest
+    concurrency:
+      group: playwright-${{ github.ref }}
+      cancel-in-progress: true
+    timeout-minutes: 30
+    permissions:
+      contents: read
+
+    steps:
+      # Checkout the repository code
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Setup Node.js with Yarn caching
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: yarn
+
+      # Install dependencies with Yarn
+      - name: Install dependencies
+        run: yarn install --immutable --immutable-cache --check-cache
+
+      # Install Playwright and system dependencies
+      - name: Install Playwright browsers and system dependencies
+        run: yarn playwright install --with-deps
+
+      # Run Playwright tests in parallel
+      - name: Run Playwright tests
+        run: yarn playwright test
+
+      # Upload HTML report (runs even if tests fail)
+      - name: Upload Playwright HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-html-report
+          path: playwright-report
+
+      # Upload test traces (runs even if tests fail)
+      - name: Upload Playwright traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: test-results
+
+      # Notify Teams only when workflow fails (MOCK - for learning purposes)
+      - name: Notify Teams on failure
+        if: failure()
+        run: |
+          echo "=== TEAMS NOTIFICATION (MOCK) ==="
+          echo "This message would be sent to Microsoft Teams webhook:"
+          echo ""
+          echo "PR Title: ${{ github.event.pull_request.title }}"
+          echo "PR Author: ${{ github.event.pull_request.user.login }}"
+          echo "Branch: ${{ github.head_ref }}"
+          echo "Workflow Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          echo ""
+          echo "To enable real notifications:"
+          echo "1. Create Incoming Webhook in Microsoft Teams"
+          echo "2. Add TEAMS_WEBHOOK_URL secret in GitHub repository settings"
+          echo "3. Replace this mock step with actual curl command"
