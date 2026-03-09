@@ -17,6 +17,9 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
+      pages: write
+      id-token: write
+    environment: github-pages
     defaults:
       run:
         working-directory: AI-Assisted Continuous Integration/AI-Assisted Pipeline Configuration
@@ -32,7 +35,7 @@ jobs:
         with:
           node-version: lts/*
           cache: yarn
-          cache-dependency-path: AI-Assisted Continuous Integration/AI-Assisted Pipeline Configuration/yarn.lock
+          cache-dependency-path: '**/yarn.lock'
 
       # Install dependencies with Yarn
       - name: Install dependencies
@@ -78,3 +81,95 @@ jobs:
           echo "1. Create Incoming Webhook in Microsoft Teams"
           echo "2. Add TEAMS_WEBHOOK_URL secret in GitHub repository settings"
           echo "3. Replace this mock step with actual curl command"
+
+      - name: Prepare Playwright report history
+        if: always() && github.ref == 'refs/heads/master'
+        run: |
+          set -euo pipefail
+          REPORT_DIR="playwright-report"
+          HISTORY_FILE="$REPORT_DIR/history.json"
+          TEMP_DIR="$(mktemp -d)"
+
+          git fetch origin gh-pages --depth=1 || true
+          if git show-ref --verify --quiet refs/remotes/origin/gh-pages; then
+            git worktree add "$TEMP_DIR" origin/gh-pages
+            if [ -f "$TEMP_DIR/playwright-report/history.json" ]; then
+              cp "$TEMP_DIR/playwright-report/history.json" "$HISTORY_FILE"
+            fi
+            git worktree remove "$TEMP_DIR" --force
+          fi
+
+          if [ ! -f "$HISTORY_FILE" ]; then
+            echo "[]" > "$HISTORY_FILE"
+          fi
+
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          TIMESTAMP="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          CONCLUSION="${{ job.status }}"
+          COMMIT_SHA="${{ github.sha }}"
+          REF="${{ github.ref }}"
+
+          ENTRY=$(jq -n \
+            --arg timestamp "$TIMESTAMP" \
+            --arg run_url "$RUN_URL" \
+            --arg sha "$COMMIT_SHA" \
+            --arg ref "$REF" \
+            --arg conclusion "$CONCLUSION" \
+            '{timestamp:$timestamp,run_url:$run_url,sha:$sha,ref:$ref,conclusion:$conclusion}')
+
+          jq ". + [\$entry]" --argjson entry "$ENTRY" "$HISTORY_FILE" > "$HISTORY_FILE.tmp"
+          mv "$HISTORY_FILE.tmp" "$HISTORY_FILE"
+
+      - name: Upload Playwright report to Pages
+        if: always() && github.ref == 'refs/heads/master'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: playwright-report/
+
+      - name: Deploy to GitHub Pages
+        if: always() && github.ref == 'refs/heads/master'
+        uses: actions/deploy-pages@v4
+
+  security-scan:
+    name: Dependency Security Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: AI-Assisted Continuous Integration/AI-Assisted Pipeline Configuration
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: yarn
+          cache-dependency-path: '**/yarn.lock'
+
+      - name: Install dependencies
+        run: yarn install --immutable --immutable-cache --check-cache
+
+      - name: Run yarn audit and summarize
+        continue-on-error: false
+        run: |
+          set -euo pipefail
+          yarn audit --json > audit.json || true
+
+          HIGH_COUNT=$(jq -s '[.[] | select(.type=="auditAdvisory") | select(.data.advisory.severity=="high")] | length' audit.json)
+          CRITICAL_COUNT=$(jq -s '[.[] | select(.type=="auditAdvisory") | select(.data.advisory.severity=="critical")] | length' audit.json)
+          TOTAL_COUNT=$(jq -s '[.[] | select(.type=="auditAdvisory")] | length' audit.json)
+
+          {
+            echo "## Dependency Security Scan"
+            echo "- Total advisories: $TOTAL_COUNT"
+            echo "- High: $HIGH_COUNT"
+            echo "- Critical: $CRITICAL_COUNT"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$HIGH_COUNT" -gt 0 ] || [ "$CRITICAL_COUNT" -gt 0 ]; then
+            echo "High or critical vulnerabilities detected." >&2
+            exit 1
+          fi
